@@ -2,16 +2,47 @@ name: build-release
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     tags: ["v*"]
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build (${{ matrix.target }})
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install build ".[test,train]"
+      - run: python -m pytest -q -m "not slow"
+      - run: python -m build
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-packages
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  package-platform:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    name: Package (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,111 +50,63 @@ jobs:
         include:
           - os: windows-latest
             target: windows-x86_64
-            arch: x64
           - os: windows-latest
             target: windows-arm64
-            arch: arm64
           - os: macos-13
             target: macos-x86_64
-            arch: x64
           - os: macos-14
             target: macos-arm64
-            arch: arm64
           - os: ubuntu-latest
             target: linux-x86_64
-            arch: x64
           - os: ubuntu-24.04-arm
             target: linux-arm64
-            arch: arm64
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: |
           python -m pip install --upgrade pip
-          pip install build wheel twine pytest
-          pip install -e ".[test,train]"
-
-      - name: Run tests
-        run: |
-          python -m pytest -q -m "not slow"
-
-      - name: Build Python packages
-        run: |
-          python -m build
-
-      - name: Package platform binaries
-        shell: bash
+          python -m pip install -e .
+      - shell: bash
         run: |
           mkdir -p release-pkg
-          python -m needle download ${{ matrix.target }} --out release-pkg || true
-          if [ -d "release-pkg/${{ matrix.target }}" ]; then
-            cd release-pkg
-            if [ "${{ runner.os }}" = "Windows" ]; then
-              7z a "../needle-${{ matrix.target }}.zip" "${{ matrix.target }}"
-            else
-              tar -czvf "../needle-${{ matrix.target }}.tar.gz" "${{ matrix.target }}"
-            fi
-            cd ..
+          python -m needle download ${{ matrix.target }} --out release-pkg
+          cd release-pkg
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "../needle-${{ matrix.target }}.zip" "${{ matrix.target }}"
+          else
+            tar -czf "../needle-${{ matrix.target }}.tar.gz" "${{ matrix.target }}"
           fi
-
-      - name: Prepare release artifacts directory
-        shell: bash
-        run: |
-          mkdir -p release-artifacts
-          cp dist/* release-artifacts/ 2>/dev/null || true
-          cp needle-${{ matrix.target }}.* release-artifacts/ 2>/dev/null || true
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: artifacts-${{ matrix.target }}
-          path: release-artifacts/*
+          name: platform-${{ matrix.target }}
+          path: needle-${{ matrix.target }}.*
+          if-no-files-found: error
+          retention-days: 1
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     name: Publish Release
-    needs: build
+    needs: [verify, package-platform]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: release-downloads
-
-      - name: Consolidate release artifacts
-        run: |
+      - run: |
           mkdir -p release-artifacts
           find release-downloads -type f -exec cp {} release-artifacts/ \;
           ls -la release-artifacts/
-
-      - name: Determine release tag
-        id: tag
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=nightly" >> "$GITHUB_OUTPUT"
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Publish or Update GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.name }}
-          name: Needle Release ${{ steps.tag.outputs.name }}
+          tag_name: ${{ github.ref_name }}
+          name: Needle Release ${{ github.ref_name }}
           files: release-artifacts/*
-          prerelease: ${{ steps.tag.outputs.prerelease == 'true' }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -3,12 +3,6 @@ import pytest
 import argparse
 import json
 
-
-# ---------------------------------------------------------------------------
-# Security regression tests – these must pass even if the safetensors library
-# is not installed, because the guard is a plain string check before any I/O.
-# ---------------------------------------------------------------------------
-
 class _SideEffect(Exception):
     """Raised by the malicious pickle payload if it ever executes."""
 
@@ -21,7 +15,6 @@ class _MaliciousPayload:
     proving that code execution occurred.
     """
     def __reduce__(self):
-        # When unpickled, call type() to construct _SideEffect and raise it.
         return (_SideEffect, ("pickle payload executed",))
 
 
@@ -84,12 +77,6 @@ def test_read_checkpoint_rejects_pickle_disguised_as_safetensors(tmp_path):
 
     with pytest.raises(SafetensorError):
         read_checkpoint(str(path))
-
-    # Belt-and-suspenders: SafetensorError is not a subclass of _SideEffect,
-    # so this assertion is always True here, but it documents the invariant
-    # that must hold even if the implementation changes.
-    # (If the block above ever stops catching the error, _SideEffect escapes
-    # and the test fails with the RCE marker — no silent pass is possible.)
 
 
 def test_read_adapter_rejects_pickle_disguised_as_safetensors(tmp_path):

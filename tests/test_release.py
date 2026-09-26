@@ -65,7 +65,6 @@ def test_release_tag_contains_versioned_source_and_skips_unchanged_main(repo):
     original = git(repo, "rev-parse", "HEAD")
     (repo / "pyproject.toml").write_text('version = "2.0.12"\n')
     (repo / "needle/__init__.py").write_text('__version__ = "2.0.12"\n')
-    # The test uses a local tag and never pushes to a remote.
     run_block(repo, tag_block("2.0.12"))
     assert git(repo, "show", "v2.0.12:pyproject.toml") == 'version = "2.0.12"'
     assert git(repo, "show", "v2.0.12:needle/__init__.py") == '__version__ = "2.0.12"'

@@ -7,9 +7,6 @@ import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-# The jax metal plugin refuses to load against a newer PJRT API without this;
-# it must be in the environment before jax initialises its backend, and this
-# module is imported before any jax import on every training path.
 if sys.platform == "darwin":
     os.environ.setdefault("ENABLE_PJRT_COMPATIBILITY", "1")
 

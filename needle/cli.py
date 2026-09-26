@@ -116,7 +116,6 @@ def _install_xla_log_filter():
                                 continue
                             skipping = False
                             out.write(line + b"\n")
-                        # else: continuation body of a skipped log block — drop
                     else:
                         if is_log_start and _NOISY_LOG_HEADER.search(line):
                             skipping = True

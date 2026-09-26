@@ -174,7 +174,7 @@ def _map_quant_leaves(params, fn):
             return leaf
         i = counter[0]
         counter[0] += 1
-        s = ab.get(leaf_name(path)) if ab else None
+        s = ab.get(checkpoint_parameter_name(path)) if ab else None
 
         def apply(w):
             out = fn(w * s["b"] if s else w, i)
@@ -188,9 +188,7 @@ def _map_quant_leaves(params, fn):
 
 
 
-def leaf_name(path):
-    # Partitioned/AxisMetadata leaves add a trailing GetAttrKey("value").
-    # That is container metadata, not part of the checkpoint parameter name.
+def checkpoint_parameter_name(path):
     return "/".join(
         str(p.key) if hasattr(p, "key") else str(p.idx)
         for p in path
@@ -203,7 +201,7 @@ def quant_leaf_names(params):
 
     def visit(path, leaf):
         if _is_quant_leaf(path, leaf):
-            out.append((leaf_name(path), int(np.prod(leaf.shape))))
+            out.append((checkpoint_parameter_name(path), int(np.prod(leaf.shape))))
         return leaf
 
     jax.tree_util.tree_map_with_path(visit, params)
@@ -231,5 +229,4 @@ def head_weight(w, quant, reduce_second_last=False, group_size=CQ_GROUP_SIZE):
 
 def cq_ste_params(params, bits, group_size=CQ_GROUP_SIZE):
     return _map_quant_leaves(params, lambda w, i: cq_ste(w, bits, group_size))
-
 

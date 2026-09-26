@@ -9,11 +9,6 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-# Anonymous usage counts only (event name, versions, OS/arch, random install
-# id) - never prompts, outputs, or paths; disclosed in the README and by the
-# first-run notice. Sends run fire-and-forget on a daemon thread and must
-# never raise into caller code.
-
 ENDPOINT = os.environ.get(
     "NEEDLE_TELEMETRY_URL",
     "https://vlqqczxwyaodtcdmdmlw.supabase.co/functions/v1/telemetry",

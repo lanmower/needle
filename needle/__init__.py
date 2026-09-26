@@ -83,8 +83,6 @@ def _library_path(generation=2):
     generation = int(generation)
     override = os.environ.get(f"NEEDLE{generation}_LIB_PATH")
     if generation == 2 and not override:
-        # NEEDLE_LIB_PATH predates multi-generation dispatch and therefore
-        # names the Needle 2 engine.  Never route a v3 archive through it.
         override = os.environ.get("NEEDLE_LIB_PATH")
     if override:
         return override
@@ -93,7 +91,6 @@ def _library_path(generation=2):
     stem, suffix = os.path.splitext(lib_name)
     local_names = [f"{stem}{generation}{suffix}"]
     if generation == 2:
-        # Wheels published before the split shipped Needle 2 as libneedle.*.
         local_names.append(lib_name)
     for name in local_names:
         local = os.path.join(here, name)
@@ -432,9 +429,6 @@ def _source_years(text):
         rf"\b{months}\s+\d{{1,2}}(?:st|nd|rd|th)?\s*,?\s+(\d{{1,4}})(?![0-9A-Za-z])",
         rf"\b{months}[\s,]+(\d{{3,4}})(?![0-9A-Za-z])",
         r"\byear\s+(\d{1,4})(?![0-9A-Za-z])",
-        # Year-first numeric dates only (2024-03-15, 2024/03/15).  A day- or
-        # month-first date such as 5/6/24 must not mint its leading component
-        # as a year: no ISO argument can ever match it, so every date would fail.
         r"(?<![0-9])(\d{4})(?=[-/]\d{1,2}[-/]\d{1,2}(?![0-9]))",
     ]
     lowered = text.lower()

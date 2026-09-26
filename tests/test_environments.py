@@ -103,8 +103,6 @@ class _Stub:
         return 0
 
     def needle_complete(self, text, *args):
-        # The output buffer is the second-to-last argument in every
-        # needle_complete signature, for both engine generations.
         buffer = args[-2]
         prompt = text.decode("utf-8").strip()
         matched = not prompt.startswith(_FAIL)
@@ -126,8 +124,6 @@ def stub(monkeypatch):
 
     engine = _Stub()
     monkeypatch.setenv("NEEDLE_TELEMETRY", "0")
-    # agent_for sets this with setdefault, so claiming it here keeps the change
-    # from leaking into the rest of the process.
     monkeypatch.setenv("NEEDLE_STRICT_VALIDATE", "1")
     monkeypatch.setattr(needle, "_lib", lambda generation=2: engine)
     monkeypatch.setattr(needle, "_active", {})
@@ -174,8 +170,6 @@ def test_min_confidence_keeps_a_call_at_the_threshold(stub):
         __name__="e", TOOLS=[set_level], SYSTEM="",
         TEST_CASES=[{"query": _PASS, "calls": [_MATCHING], "category": "positive"}])
 
-    # "at or above the threshold" is a strict comparison, so a call whose
-    # confidence equals the gate is acted on rather than treated as a refusal.
     assert _harness.run_tests(module, 0.9, verbose=False) is True
 
 

@@ -19,7 +19,6 @@ BASE_WEIGHTS = {
 }
 CHECKPOINT_PREFIX = "checkpoints"
 
-# Backwards-compatible aliases for callers that explicitly fetch Needle 2.
 HF_REPO = ENGINE_REPOS[2]
 
 PLATFORMS = ("macos-arm64", "macos-x86_64", "linux-x86_64", "linux-arm64", "linux-armv7",

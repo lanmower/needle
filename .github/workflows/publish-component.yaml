@@ -1,8 +1,5 @@
 name: publish-component
 
-# Publishes the WebAssembly component of a Needle engine generation to GHCR as
-# an OCI artifact and signs it with Sigstore keyless signing, so consumers can
-# pull it with oras or wkg and verify the signature with cosign.
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +14,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: publish-component-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -25,11 +26,13 @@ jobs:
       packages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install -e .
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e .
       - id: component
         run: |
           generation="${{ github.event.inputs.generation || '2' }}"

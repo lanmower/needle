@@ -16,7 +16,6 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
-# Use uv when available (10-100x faster), fall back to pip.
 UV_INSTALL="pip install"
 UV_VENV="$PYTHON -m venv"
 if command -v uv >/dev/null 2>&1; then

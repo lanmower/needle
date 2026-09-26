@@ -8,8 +8,6 @@ from typing import Callable
 _JSON_TYPES = {str: "string", int: "integer", float: "number", bool: "boolean",
                list: "array", dict: "object"}
 
-# PEP 604 unions (X | Y) have origin types.UnionType, which only exists on
-# Python 3.10+; on 3.9 the getattr falls back to typing.Union harmlessly.
 _UNION_ORIGINS = (typing.Union, getattr(types, "UnionType", typing.Union))
 
 _MISSING = object()
