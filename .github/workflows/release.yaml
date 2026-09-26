@@ -16,6 +16,7 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 3
     outputs:
       run: ${{ steps.check.outputs.run }}
     steps:
@@ -33,6 +34,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -47,6 +49,7 @@ jobs:
     needs: [gate, test]
     if: github.ref == 'refs/heads/main' && needs.gate.outputs.run == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write

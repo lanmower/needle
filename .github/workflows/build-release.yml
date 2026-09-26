@@ -19,6 +19,7 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -44,6 +45,7 @@ jobs:
     needs: verify
     name: Package (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -92,6 +94,7 @@ jobs:
     name: Publish Release
     needs: [verify, package-platform]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
