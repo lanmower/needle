@@ -36,6 +36,7 @@ def test_download_target_kinds():
     from needle.cli import _download_target
 
     assert _download_target("macos-arm64") == ("platform", "macos-arm64")
+    assert _download_target("macos-x86_64") == ("platform", "macos-x86_64")
     assert _download_target("needle3") == ("base", 3)
     assert _download_target("needle2.cact") == ("base", 2)
     assert _download_target("needle3.safetensors") == ("checkpoint", "needle3.safetensors")
@@ -103,6 +104,7 @@ def test_component_platform_is_downloadable():
     from needle.agent.fetch import PLATFORMS
 
     assert "wasm-component" in PLATFORMS
+    assert "macos-x86_64" in PLATFORMS
 
 
 def test_fetch_library_creates_destination(tmp_path, monkeypatch):
