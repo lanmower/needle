@@ -147,13 +147,13 @@ def test_finetune_uploads_submits_waits_and_downloads(server, tmp_path):
     assert done["fine_tuned_model"] == "model-1"
 
     paths = client.download("model-1", str(tmp_path / "out"))
-    assert sorted(p.split("/")[-1] for p in paths) == ["smart-home-4L.cact", "smart-home-8L.cact"]
+    assert sorted(p.replace("\\", "/").split("/")[-1] for p in paths) == ["smart-home-4L.cact", "smart-home-8L.cact"]
     assert all(open(p, "rb").read() == b"CACT!" for p in paths)
     blob = next(r for r in state["requests"] if r[1].startswith("/blob/"))
     assert blob[2] is None
 
     only = client.download("model-1", str(tmp_path / "one"), depth=4)
-    assert [p.split("/")[-1] for p in only] == ["smart-home-4L.cact"]
+    assert [p.replace("\\", "/").split("/")[-1] for p in only] == ["smart-home-4L.cact"]
 
 
 def test_errors_carry_code_param_and_url(server, tmp_path):

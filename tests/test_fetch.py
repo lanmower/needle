@@ -36,6 +36,7 @@ def test_download_target_kinds():
     from needle.cli import _download_target
 
     assert _download_target("macos-arm64") == ("platform", "macos-arm64")
+    assert _download_target("macos-x86_64") == ("platform", "macos-x86_64")
     assert _download_target("needle3") == ("base", 3)
     assert _download_target("needle2.cact") == ("base", 2)
     assert _download_target("needle3.safetensors") == ("checkpoint", "needle3.safetensors")
@@ -79,7 +80,7 @@ def test_fetch_checkpoint_prefers_the_checkpoints_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(fetch, "_register_download", lambda generation: None)
     monkeypatch.setattr("huggingface_hub.hf_hub_download", fake_download)
     out = fetch.fetch_checkpoint("needle3.safetensors", str(tmp_path / "dl" / "checkpoints"))
-    assert out.endswith("checkpoints/needle3.safetensors") and open(out, "rb").read() == b"ckpt"
+    assert out.replace("\\", "/").endswith("checkpoints/needle3.safetensors") and open(out, "rb").read() == b"ckpt"
 
 
 def test_weights_spec_parsing():
@@ -103,6 +104,7 @@ def test_component_platform_is_downloadable():
     from needle.agent.fetch import PLATFORMS
 
     assert "wasm-component" in PLATFORMS
+    assert "macos-x86_64" in PLATFORMS
 
 
 def test_fetch_library_creates_destination(tmp_path, monkeypatch):
@@ -219,7 +221,7 @@ def test_engine_load_falls_back_to_the_other_libc(monkeypatch, tmp_path):
     loaded = {}
 
     def fake_cdll(path):
-        if path.endswith("musl/libneedle.so"):
+        if path.replace("\\", "/").endswith("musl/libneedle.so"):
             loaded["path"] = path
             return "handle"
         raise OSError("Error relocating libneedle.so: strtoll_l: symbol not found")

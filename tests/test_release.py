@@ -34,9 +34,12 @@ def repo(tmp_path):
 
 def version_output(repo, published="0.0.0"):
     import os
+    import sys
     workflow = WORKFLOW.read_text()
     block = workflow.split("      - id: version\n        run: |\n", 1)[1]
     block = block.split("      - if:", 1)[0]
+    py_cmd = f'"{sys.executable}"' if sys.executable else "python"
+    block = block.replace("python3 -c", f"{py_cmd} -c")
     output = repo / "output"
     output.write_text("")
     fake_bin = repo / "fake-bin"
@@ -44,8 +47,8 @@ def version_output(repo, published="0.0.0"):
     curl = fake_bin / "curl"
     curl.write_text("#!/bin/sh\nprintf '%s' '{\"info\": {\"version\": \"" + published + "\"}}'\n")
     curl.chmod(0o755)
-    run_block(repo, block, GITHUB_OUTPUT=str(output),
-              PATH=f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    run_block(repo, block, GITHUB_OUTPUT=output.as_posix(),
+              PATH=f"{fake_bin.as_posix()}{os.pathsep}{os.environ['PATH']}")
     return output.read_text().strip()
 
 

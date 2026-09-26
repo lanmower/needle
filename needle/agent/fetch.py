@@ -22,7 +22,7 @@ CHECKPOINT_PREFIX = "checkpoints"
 # Backwards-compatible aliases for callers that explicitly fetch Needle 2.
 HF_REPO = ENGINE_REPOS[2]
 
-PLATFORMS = ("macos-arm64", "linux-x86_64", "linux-arm64", "linux-armv7",
+PLATFORMS = ("macos-arm64", "macos-x86_64", "linux-x86_64", "linux-arm64", "linux-armv7",
              "linux-riscv64", "linux-mipsel", "windows-x86_64", "windows-arm64",
              "android-arm64", "android-armv7", "android-riscv64",
              "ios-arm64", "ios-sim-arm64", "tvos-arm64", "watchos-arm64", "wasm",
