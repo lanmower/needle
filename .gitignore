@@ -5,6 +5,7 @@ __pycache__/
 .Python
 .gm/
 .agentplug-kv/
+/download/
 build/
 develop-eggs/
 dist/
