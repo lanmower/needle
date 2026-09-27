@@ -73,7 +73,7 @@ jobs:
       - shell: bash
         run: |
           mkdir -p release-pkg
-          python -m needle download ${{ matrix.target }} --out release-pkg
+          needle download ${{ matrix.target }} --out release-pkg
           cd release-pkg
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "../needle-${{ matrix.target }}.zip" "${{ matrix.target }}"
