@@ -1,6 +1,6 @@
 ---
 name: needle-preference-tune
-description: Rolls out a LoRA fine-tune of needle toward whatever preference the invoker states -- generates a training set that embodies it, trains an adapter, builds a .cact, and validates live that the preference actually shows up. Use when asked to fine-tune/train needle to prefer a specific tool-call choice, argument style, refusal behavior, or persona; the preference itself always comes from the invocation, never from this file. Hyperparameter and dataset-sizing guidance below is grounded in cactuscompute.com/blog/finetuning-needle, not guessed.
+description: Rolls out a LoRA fine-tune of needle toward whatever preference the invoker states -- generates a training set that embodies it, trains an adapter, builds a .cact, and validates live that the preference actually shows up. Use when asked to fine-tune/train needle to prefer a specific tool-call choice, argument style, refusal behavior, or persona; the preference itself always comes from the invocation, never from this file. Hyperparameter/dataset-sizing guidance is grounded in cactuscompute.com/blog/finetuning-needle; schema/action-space design is grounded in github.com/browser-use/jev-ultrafast. Neither is guessed.
 ---
 
 # needle-preference-tune
@@ -62,6 +62,38 @@ tuned model calls a tool on everything" / drifts off-brief on cases the
 preference wasn't about. There's no published mixing ratio for this --
 default to something like 70/30 preference-to-neutral and adjust based on
 what step 7's regression check shows.
+
+**Design principle, grounded in `browser-use/jev-ultrafast`: keep the
+preference a selection, not a generation, and only offer what's currently
+valid.** That project's whole speed/cost win (25% faster, ~10x fewer browser
+round trips on its benchmark task) comes from one structural choice: almost
+every decision is a closed-set pick from an indexed table of *currently
+valid* operations/targets for that exact state, and its small LLM only
+generates free text for the one operation (`TYPE_TEXT`) that truly needs it
+-- everything else is selection, not generation. It also bundles the
+operation and target decision into one model request instead of two
+sequential calls, and its executor re-validates a selected target against
+live DOM state (freshness, occlusion) before trusting it, rather than
+trusting the model's output as ground truth.
+
+The same structure already exists in needle (grammar-constrained
+`{name, arguments}`, closed enum/`Literal` argument choices, the deterministic
+repair step, `validation.ungrounded`) -- the lesson to actually apply when
+authoring the preference's schemas:
+
+- Wherever the stated preference can be expressed as choosing among a small,
+  state-valid set of options (enum/`Literal`) instead of free-generating a
+  value, do that. It's the same fork as step 0's classification: a selection
+  preference is the "few hundred examples" case; forcing it into an
+  open-ended argument makes it the "thousands of examples" case for no
+  reason.
+- If the preference is state-dependent (the right choice today depends on
+  what's actually available/valid right now), put that state in the query or
+  `system` facts so the training example is grounded in what was actually
+  offered, not a context-free global rule the model can't apply consistently.
+- Don't design a preference that needs a confirmatory second turn when the
+  first call already has enough grounding to decide -- one request per
+  decision, same as needle's existing single JSON-call turn.
 
 ## 2. Generate the set
 
@@ -162,6 +194,14 @@ Two tiers, cheapest first:
    step 0, not the easy ones -- and run it through the fine-tuned `.cact` and
    the untuned base side by side. Confirm two things, not one: the preference
    now shows up consistently, AND those existing suites still behave sanely.
+3. **Ground the call against real state, not just parse it.** Per the
+   `jev-ultrafast` lesson in step 1: a JSON call that parses and looks
+   plausible is not the same as one that's actually valid against real
+   current state. Where the tools represent real actions with real
+   preconditions, execute the emitted call (or check it against the actual
+   state it claims to act on) rather than stopping at "the JSON matches the
+   schema" -- that's exactly where a preference can silently regress into
+   a fluent-looking hallucination.
 
 **Known, non-negotiable limitation:** local `needle finetune`/`needle build
 --lora` never trains or carries the confidence-calibration head -- a
