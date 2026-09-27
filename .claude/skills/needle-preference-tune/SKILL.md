@@ -1,6 +1,6 @@
 ---
 name: needle-preference-tune
-description: Rolls out a LoRA fine-tune of needle toward whatever preference the invoker states -- generates a training set that embodies it, trains an adapter, builds a .cact, and validates live that the preference actually shows up. Use when asked to fine-tune/train needle to prefer a specific tool-call choice, argument style, refusal behavior, or persona; the preference itself always comes from the invocation, never from this file. Hyperparameter/dataset-sizing guidance is grounded in cactuscompute.com/blog/finetuning-needle; schema/action-space design is grounded in github.com/browser-use/jev-ultrafast. Neither is guessed.
+description: Rolls out a LoRA fine-tune of needle toward whatever preference the invoker states -- generates a training set that embodies it, trains an adapter, builds a .cact, and validates live that the preference actually shows up. Use when asked to fine-tune/train needle to prefer a specific tool-call choice, argument style, refusal behavior, or persona; the preference itself always comes from the invocation, never from this file. Hyperparameter/dataset-sizing guidance is grounded in cactuscompute.com/blog/finetuning-needle; schema/action-space design in cactuscompute.com/blog/designing-tools-for-needle and github.com/browser-use/jev-ultrafast; validation taxonomy in designing-tools-for-needle and needle-confidence. None of it is guessed.
 ---
 
 # needle-preference-tune
@@ -29,6 +29,18 @@ step downstream:
 
 If the invocation is vague, turn the ambiguity into a `prd-add`/stated
 assumption and proceed -- don't stall on it.
+
+**Fine-tuning is the last lever, not the first.** Per
+`designing-tools-for-needle`: "When a suite passes on the base model and your
+product needs more, the next lever is fine-tuning rather than a longer
+description." Before generating a single training example, check whether
+the stated preference is actually a schema problem -- a narrower tool, a
+better per-argument description, an enum renamed to the words users say, or
+a regex `trigger` for a phrasing no description enumerates all cost nothing
+and ship instantly, where a fine-tune costs a training run and a rebuild
+every time the preference is revisited. Reach for training only once those
+are genuinely exhausted or the preference can't be expressed as a schema
+change at all (e.g. it's about which of two already-correct tools to favor).
 
 ## 1. Turn the preference into schemas + a generation brief
 
@@ -94,6 +106,30 @@ authoring the preference's schemas:
 - Don't design a preference that needs a confirmatory second turn when the
   first call already has enough grounding to decide -- one request per
   decision, same as needle's existing single JSON-call turn.
+
+This isn't jev-ultrafast's idea alone -- `designing-tools-for-needle` says
+the identical thing independently, about needle specifically: "A narrow tool
+with a plain description beats a broad one. The model is best at picking a
+name; it is worst at inventing free-text values that stand in for a
+decision." Two unrelated sources converging on the same structural rule is
+why this section is load-bearing, not a stylistic preference. It adds two
+more concrete authoring rules worth applying to the schemas:
+
+- **Name enum options the way users would say them.** `action: ["increase",
+  "decrease"]` matches "turn up", "louder", "raise" and their opposites
+  because the engine knows those families; `["inc", "dec"]` does not. Never
+  let an enum value collide with a common word from the opposite intent (a
+  room named `office` poisons every request containing "off"). Ship a polar
+  pair (`lock_door`/`unlock_door`) as two tools or one enum -- never leave
+  the model to infer polarity from a description.
+- **A description is a fact about the tool, not an instruction to the
+  model** -- instructions placed there do not steer decoding. If a phrasing
+  needs to reach a tool no description can enumerate, that's what a regex
+  `trigger` is for (it forces a call past the confidence floor and the guess
+  gates, though not the contradiction gates -- a negated or reported request
+  still withholds). A catch-all trigger needs a negative lookahead excluding
+  other tools' nouns and multi-action phrasing ("and"/"then"), or it
+  misroutes. This is a cheaper fix than training data for a routing miss.
 
 ## 2. Generate the set
 
@@ -189,11 +225,22 @@ Two tiers, cheapest first:
    not drop this baseline on surfaces the preference isn't targeting -- that
    delta is the regression signal, for free, and is exactly what step 1's
    rehearsal-mix rows are meant to protect.
-2. **Author the boundary cases.** Build a short battery of prompts that sit
-   exactly on the preference's decision boundary -- the ambiguous cases from
-   step 0, not the easy ones -- and run it through the fine-tuned `.cact` and
-   the untuned base side by side. Confirm two things, not one: the preference
-   now shows up consistently, AND those existing suites still behave sanely.
+2. **Author the boundary cases, against a real taxonomy, not a vibe.**
+   `designing-tools-for-needle` names the exact six categories its own
+   32-case suites cover: the exact call for a positive request; `[]` when a
+   required value is missing, when no tool covers the request, when the
+   request is negated, and when a stated value is out of bounds; two calls
+   from one request, order-insensitive. `needle-confidence` adds the specific
+   guess/grounding-gate edge cases worth throwing in too: a quoted command
+   reported by someone else ("she said turn it off"), a required enum filled
+   with an option the request never names, a required slot filled from a
+   control word instead of request text, a required number with no default
+   left unstated, an origin/destination swap, and a target the request
+   explicitly excludes. Build the battery from these categories at the
+   preference's specific decision boundary -- not just the easy cases -- and
+   run it through the fine-tuned `.cact` and the untuned base side by side.
+   Confirm two things, not one: the preference now shows up consistently,
+   AND those existing suites still behave sanely.
 3. **Ground the call against real state, not just parse it.** Per the
    `jev-ultrafast` lesson in step 1: a JSON call that parses and looks
    plausible is not the same as one that's actually valid against real
