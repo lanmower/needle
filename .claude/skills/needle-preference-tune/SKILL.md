@@ -260,6 +260,47 @@ Two tiers, cheapest first:
    schema" -- that's exactly where a preference can silently regress into
    a fluent-looking hallucination.
 
+**Live-verified gotchas (hit for real this session, not hypothetical):**
+
+- **The Python API can 404 on a fresh engine fetch if the installed package's
+  declared engine version is ahead of what's actually published.**
+  `needle.Needle()` downloads a wheel matching `fetch.ENGINE_VERSIONS[gen]`;
+  when that constant has been bumped in the repo ahead of the corresponding
+  wheel landing on the HF hub, every platform 404s (`EntryNotFoundError`),
+  not just yours. Don't treat this as your fine-tune being broken. Work
+  around it: fetch the latest wheel that *is* published for your platform,
+  unzip it (a wheel is a zip), and point `NEEDLE{gen}_LIB_PATH` at the
+  `.dll`/`.so` inside. If that's not available either, fall back to the
+  platform-archive validation route from `build-release` (download a
+  platform folder, run its standalone `needle`/`needle.exe` binary directly)
+  -- it doesn't go through this wheel-fetch path at all.
+- **Call `agent.reset()` between independent validation prompts**, or
+  construct with `stateless=True`. Reusing one agent across a prompt battery
+  without resetting silently pollutes every result after the first with
+  unrelated prior turns -- it looks exactly like "the model is confused,"
+  when it's actually the validation harness that's confused.
+- **A clean loss curve is not proof the preference moved -- check per-class,
+  not aggregate accuracy.** A 25-example, single-phrasing-pattern set
+  (every row templated as "remember to/that X") trained cleanly here: val
+  loss 1.80 -> 1.15 over 180 steps, plateaued, no overfitting. Live output
+  was nonetheless *identical* between the tuned model and the untuned base
+  on every validation prompt, including the easy "clear task" sanity case --
+  both always picked the tool the surface wording ("remember") lexically
+  cues, regardless of which tool the row was labeled with. The held-out
+  exact-match number (1/5) didn't catch this either, because it's
+  indistinguishable from a degenerate always-predict-the-base's-favorite
+  strategy. The real check: after training, try to elicit *every* option in
+  the preference, not just the modal one -- if only the base's original
+  default ever comes out, the dataset didn't move anything, whatever the
+  loss curve says. This is exactly why step 6 is live execution and not the
+  training-time metrics.
+- **Phrasing diversity matters as much as raw count.** All 25 rows above
+  shared one lexical trigger; that's a harder case than the blog's "few
+  hundred clean examples" guidance implicitly assumes, because count alone
+  doesn't dilute a base model's lexical shortcut the way varied real-world
+  phrasing does. Hitting a few hundred *identically-templated* rows would
+  likely reproduce this same failure -- vary the wording, not just the count.
+
 **Known, non-negotiable limitation:** local `needle finetune`/`needle build
 --lora` never trains or carries the confidence-calibration head -- a
 preference-tuned `.cact` built this way always reports `confidence: None`,
