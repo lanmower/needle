@@ -54,8 +54,6 @@ jobs:
             target: windows-x86_64
           - os: windows-latest
             target: windows-arm64
-          - os: macos-13
-            target: macos-x86_64
           - os: macos-14
             target: macos-arm64
           - os: ubuntu-24.04

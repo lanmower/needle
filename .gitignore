@@ -3,6 +3,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.gm/
+.agentplug-kv/
 build/
 develop-eggs/
 dist/
