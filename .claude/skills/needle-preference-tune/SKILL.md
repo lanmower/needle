@@ -300,6 +300,72 @@ Two tiers, cheapest first:
   doesn't dilute a base model's lexical shortcut the way varied real-world
   phrasing does. Hitting a few hundred *identically-templated* rows would
   likely reproduce this same failure -- vary the wording, not just the count.
+- **Confirmed: scaling both count and phrasing diversity fixes it
+  completely.** The same preference, regenerated as 355 rows across 15
+  distinct wrapper phrasings per class (not one shared trigger word) and
+  trained for 1000 steps (50 epochs, GPU), converged to val loss 0.0011 (from
+  1.5, clean, no overfitting) with 34/35 held-out exact-match -- and, live,
+  the tuned model got every single validation prompt right, including
+  correctly reversing a genuine base-model mistake and generalizing to
+  wrapper phrasings never seen in training at all ("hey, don't let me forget
+  to X" -> `add_task`, correct, with a wrapper absent from every training
+  row). The base model on the same battery got the easy "clear task" sanity
+  case *wrong* (defaulted to `add_note` off the word "remember") and one
+  novel note case wrong too. This is the complete, positive version of the
+  lesson above: a smoke-test-sized, single-template dataset proves the CLI
+  mechanics; a "few hundred, several phrasings per class" dataset is what
+  actually moves the preference, exactly as the blog's own sizing guidance
+  said, and step 6's live check is what tells the two apart.
+
+**GPU acceleration via Kaggle, when local training is CPU-only or
+memory-contended.** JAX-on-CPU works but is slow, and a memory-pressured
+local machine can have background training reaped mid-run (not a bug in the
+command -- a harness safety measure; don't blindly restart a reaped run,
+switch approach instead). This account already has a working `kaggle` CLI
+(`kaggle config view` / `~/.kaggle/access_token`) and a large prior-art
+Kaggle training corpus at `C:\dev\kaggle\traintai\AGENTS.md` and sibling
+round folders -- read that before reinventing the pattern, especially its
+documented GPU-hardware findings (T4 is the proven-good `machine_shape`;
+`NvidiaTeslaT4x2` silently gives one P100 instead, incompatible with recent
+CUDA wheels on that image). The pattern that worked end to end here:
+
+1. `kernel-metadata.json` with `"enable_gpu": true, "enable_tpu": false,
+   "machine_shape": "NvidiaTeslaT4", "enable_internet": true` (needed to
+   `git clone` the repo).
+2. A notebook that clones the repo, `pip install -e ".[train,gpu]"` (the
+   `gpu` extra pulls `jax[cuda12]`), regenerates the dataset from a
+   `%%writefile`'d generator script (self-contained, no separate dataset
+   upload needed for a small JSONL), then runs the same `needle finetune`
+   / `needle build` commands as steps 4-5, writing outputs under
+   `/kaggle/working/`.
+3. `kaggle kernels push -p .`, then poll `kaggle kernels status
+   <user>/<kernel>` (or the Python API's `KaggleApi().kernels_status(...)`,
+   which also surfaces `failureMessage` the plain CLI status line doesn't
+   show) until `COMPLETE`; `kaggle kernels logs -f` streams live output --
+   filter it (grep/awk) to epoch milestones and error signatures, or a
+   thousand-step run turns into a thousand-line firehose.
+4. Fetch back only the adapter (a few MB), not the whole kernel output
+   (which includes the full cloned repo) -- `kaggle kernels output -p
+   <dir>` pulls everything and can be slow/memory-heavy for no reason.
+   Build the `.cact` locally afterward with plain `needle build`; merging
+   and quantising is CPU-only and doesn't need JAX, so there's no reason to
+   build inside the GPU kernel too.
+
+**Real gotcha, not hypothetical: a kernel can queue indefinitely with no
+error, and it isn't the commonly-cited 30-GPU-hours/week quota.** A pushed
+GPU kernel sat in `KernelWorkerStatus.QUEUED` for over an hour with
+`failureMessage: null` -- looking exactly like quota exhaustion, congestion,
+or a config problem, indistinguishable from the outside. Diagnosis: push a
+second, trivial GPU kernel (`import torch; torch.cuda.is_available()`, no
+repo, no deps). It hit `Kernel push error: Maximum batch GPU session count
+of 2 reached` immediately -- a hard concurrency cap distinct from the
+weekly-hours quota, and the actual cause: two sessions (one queued, one
+running from an even earlier probe) already held both slots. The stuck
+kernel started running within a minute of a slot freeing up. If a push
+lands in `QUEUED` and stays there, push a trivial probe kernel next --
+either it queues just as long (real congestion/quota) or it fails
+immediately with the batch-session error (a slot problem, and the first
+kernel will run as soon as one frees).
 
 **Known, non-negotiable limitation:** local `needle finetune`/`needle build
 --lora` never trains or carries the confidence-calibration head -- a
