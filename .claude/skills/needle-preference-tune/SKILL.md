@@ -44,6 +44,16 @@ change at all (e.g. it's about which of two already-correct tools to favor).
 
 ## 1. Turn the preference into schemas + a generation brief
 
+A stated preference isn't only about which *action* tool gets called --
+`structured-extraction-with-needle` is explicit that extraction and
+classification are the same mechanism (a record is a tool with one call;
+"classification is extraction with an enum"), and fine-tunes through the
+identical JSONL shape, record as the tool and the passage as the query. If
+the preference is really "classify/extract this field a certain way", write
+it as a record schema with a `Literal`/enum field, not as a special case --
+it's the same selection-over-generation principle again, a third independent
+source agreeing with jev-ultrafast and designing-tools-for-needle.
+
 Write the tool/record schemas (JSON) the preference is decided over. Match
 the real deployment surface's tool count: above 5 declared tools, `Needle`'s
 retrieval head renders only the top-5 per turn and constrains the grammar to
