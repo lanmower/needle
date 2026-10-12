@@ -101,7 +101,7 @@ def open_engines(rows, archive):
 def predicted(response, tool_name, enum, gate):
     calls = response.get("function_calls") or []
     withheld = response.get("suppressed_calls") or []
-    if not calls and withheld:
+    if not calls and withheld and response.get("confidence") is None:
         calls = withheld
     usable = [c for c in calls if isinstance(c, dict)
               and str(c.get("name")) == tool_name]

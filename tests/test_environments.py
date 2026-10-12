@@ -114,7 +114,7 @@ class _Stub:
         if prompt.startswith(_HELD):
             buffer.value = json.dumps({
                 "type": "call",
-                "confidence": confidence,
+                "confidence": None,
                 "function_calls": [],
                 "suppressed_calls": [_MATCHING if matched else _OTHER],
             }).encode("utf-8")

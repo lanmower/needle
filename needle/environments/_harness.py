@@ -45,7 +45,8 @@ def run_tests(module, min_confidence=0.0, verbose=True, count_withheld=False):
         agent.reset()
         response = agent.complete(case["query"])
         got = response.get("function_calls") or []
-        if count_withheld and not got:
+        if (count_withheld and not got
+                and response.get("confidence") is None):
             got = response.get("suppressed_calls") or []
         validation = response.get("validation") or {}
         if got and (validation.get("ungrounded") or validation.get("negation")):
