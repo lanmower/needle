@@ -74,8 +74,15 @@ def enum_of(rows):
     return values
 
 
+TRIGGER = None
+
+
 def engine_key(row):
-    return json.dumps([tools_of(row), row.get("system") or ""], sort_keys=True)
+    tools = tools_of(row)
+    if TRIGGER:
+        for entry in tools:
+            entry["triggers"] = [TRIGGER]
+    return json.dumps([tools, row.get("system") or ""], sort_keys=True)
 
 
 def open_engines(rows, archive):
@@ -283,8 +290,16 @@ def main():
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--dump", type=int, default=0)
+    parser.add_argument("--trigger", default=None,
+                        help="regex added as `triggers` to every tool: a triggered "
+                             "tool ships its call even below the confidence floor, "
+                             "which is the only way a locally tuned archive (no "
+                             "confidence head) delivers one")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
+
+    global TRIGGER
+    TRIGGER = args.trigger
 
     baseline_archive = args.baseline
     if baseline_archive == "auto":

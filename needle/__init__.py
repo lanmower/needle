@@ -319,7 +319,16 @@ class Needle:
         return list(output)
 
     def run(self, query: str = "", max_steps: int = 8,
-            max_new_tokens: int = 512, strict: bool = True) -> dict:
+            max_new_tokens: int = 512, strict: bool = True,
+            act_on_withheld: bool = False) -> dict:
+        """Execute the model's calls and feed results back, up to max_steps.
+
+        `act_on_withheld` also executes `suppressed_calls`. `needle build --lora`
+        drops the confidence head, so a locally tuned archive has every call it
+        makes withheld by the engine even when the engine scored it near 1.0, and
+        `run()` would otherwise execute nothing. Off by default: executing a call
+        the engine chose to withhold is a behaviour change, so it is opt-in.
+        `extract()` reads both unconditionally."""
         _track("run", self._track_props())
         if self._stateless:
             self.reset()
@@ -328,6 +337,8 @@ class Needle:
         executed = []
         for _ in range(max_steps):
             calls = response.get("function_calls") or []
+            if act_on_withheld and not calls and response.get("type") == "call":
+                calls = response.get("suppressed_calls") or []
             if response.get("type") != "call" or not calls:
                 break
             ungrounded = _ungrounded_paths(response)
