@@ -40,6 +40,49 @@ the request is risky, unclear, or would waste effort. Prefer widen_scope only
 when the question names a larger surface. Prefer ship_workaround only when the
 question accepts a stopgap."""
 
+def fewshot(path, per_class, include_reasoning=False):
+    """One demonstration per class, round-robin, so the prior stays flat.
+
+    Stating a policy in prose measured worse than saying nothing; showing the
+    operator's own resolutions instead of describing them is the implicit form.
+    Examples come from the training file, and the held-out split is
+    group-disjoint, so no demonstration is a wrapper of a held-out question.
+    """
+    rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+    by_class = {}
+    for row in rows:
+        answers = row.get("answers") or []
+        if not answers:
+            continue
+        resolution = (answers[0].get("arguments") or {}).get("resolution")
+        by_class.setdefault(resolution, []).append(row)
+    picked = []
+    for index in range(per_class):
+        for resolution in sorted(by_class):
+            bucket = by_class[resolution]
+            if index < len(bucket):
+                picked.append(bucket[index])
+    lines = []
+    for row in picked:
+        answers = row.get("answers") or []
+        resolution = (answers[0].get("arguments") or {}).get("resolution")
+        reasoning = (row.get("reasoning") or "").strip()
+        body = f"{reasoning} -> {resolution}" if include_reasoning else resolution
+        lines.append(f"Q: {row['query']}\nA: decision_choice({body})")
+    return ("This operator resolved these decision points as follows.\n\n"
+            + "\n\n".join(lines))
+
+
+def build_variants(args):
+    variants = dict(VARIANTS)
+    if args.fewshot:
+        for per_class in args.fewshot.split(","):
+            key = f"shot{per_class}"
+            variants[key] = fewshot(args.train, int(per_class),
+                                    include_reasoning=args.shot_reasoning)
+    return variants
+
+
 VARIANTS = {"none": "", "policy": POLICY, "prior": POLICY_PRIOR}
 
 
@@ -50,6 +93,15 @@ def main():
                         help="default is the cached untuned base .cact")
     parser.add_argument("--trigger", default="(options|pick|choose|which|should|want)")
     parser.add_argument("--variants", default="none,policy,prior")
+    parser.add_argument("--fewshot", default="",
+                        help="comma-separated demonstrations per class, added as "
+                             "variants shot<N>; examples come from --train")
+    parser.add_argument("--train", default="data/pref_train.jsonl")
+    parser.add_argument("--shot-reasoning", action="store_true",
+                        help="include the reasoning tail in each demonstration")
+    parser.add_argument("--no-trigger", action="store_true",
+                        help="omit the trigger: the omission arm, where the base "
+                             "is free to make no call at all")
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()
 
@@ -68,7 +120,7 @@ def main():
             entry["triggers"] = [args.trigger]
 
     for variant in args.variants.split(","):
-        system = VARIANTS[variant]
+        system = build_variants(args)[variant]
         agent = needle.Needle(weights=args.archive, tools=tools, system=system)
         started = time.time()
         hit = 0
