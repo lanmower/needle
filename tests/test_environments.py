@@ -80,6 +80,8 @@ _OTHER = {"name": "set_level", "arguments": {"level": 9}}
 _PASS = "pass"
 _LOW = "low"
 _FAIL = "fail"
+_NONE = "none"
+_HELD = "held"
 
 
 @tool
@@ -107,6 +109,16 @@ class _Stub:
         prompt = text.decode("utf-8").strip()
         matched = not prompt.startswith(_FAIL)
         confidence = 0.2 if prompt.startswith(_LOW) else 0.9
+        if prompt.startswith(_NONE):
+            confidence = None
+        if prompt.startswith(_HELD):
+            buffer.value = json.dumps({
+                "type": "call",
+                "confidence": confidence,
+                "function_calls": [],
+                "suppressed_calls": [_MATCHING if matched else _OTHER],
+            }).encode("utf-8")
+            return 0
         buffer.value = json.dumps({
             "type": "call",
             "confidence": confidence,
@@ -173,6 +185,19 @@ def test_min_confidence_keeps_a_call_at_the_threshold(stub):
     assert _harness.run_tests(module, 0.9, verbose=False) is True
 
 
+def test_a_tuned_archive_reporting_no_confidence_scores_instead_of_raising(stub):
+    """`needle build --lora` drops the confidence head, so `complete()` reports
+    confidence None. `.get("confidence", 0.0)` does not substitute for a key
+    that exists with value None, and `None < 0.0` raised -- every locally tuned
+    archive died in the scorer before this."""
+    module = types.SimpleNamespace(
+        __name__="f", TOOLS=[set_level], SYSTEM="",
+        TEST_CASES=[{"query": _NONE, "calls": [_MATCHING], "category": "positive"}])
+
+    assert _harness.run_tests(module, 0.0, verbose=False) is True
+    assert _harness.run_tests(module, 0.4, verbose=False) is False
+
+
 def test_aggregate_reports_failure_when_any_environment_fails(monkeypatch):
     class _Module:
         def __init__(self, ok):
@@ -187,3 +212,16 @@ def test_aggregate_reports_failure_when_any_environment_fails(monkeypatch):
 
     monkeypatch.setattr(environments, "_load", lambda name: _Module(True))
     assert environments.run_tests(verbose=False) is True
+
+
+def test_a_withheld_call_scores_only_when_count_withheld_is_on(stub):
+    """`needle build --lora` drops the confidence head, so the engine withholds
+    every call a tuned archive makes into `suppressed_calls`. Scoring only
+    `function_calls` then reports a tuned archive at zero however much it
+    learned."""
+    module = types.SimpleNamespace(
+        __name__="held", TOOLS=[set_level], SYSTEM="",
+        TEST_CASES=[{"query": _HELD, "calls": [_MATCHING], "category": "positive"}])
+
+    assert _harness.run_tests(module, 0.0, verbose=False) is False
+    assert _harness.run_tests(module, 0.0, verbose=False, count_withheld=True) is True

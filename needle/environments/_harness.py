@@ -28,21 +28,32 @@ def _key(call):
     return json.dumps(_fold(call), sort_keys=True)
 
 
-def run_tests(module, min_confidence=0.0, verbose=True):
+def run_tests(module, min_confidence=0.0, verbose=True, count_withheld=False):
     """Run an environment's frozen acceptance suite against the shipped engine.
     The default scores raw model output; passing e.g. min_confidence=0.4 applies
     the production contract (act on a call only at or above the threshold,
-    otherwise treat it as a refusal)."""
+    otherwise treat it as a refusal).
+
+    `count_withheld` also reads `suppressed_calls`. `needle build --lora` drops
+    the confidence head, so a locally tuned archive reports confidence None and
+    the engine withholds every call it makes (a call below 0.1 is withheld), which
+    scores a tuned archive at zero however much it learned. needle's own
+    `extract()` reads both, so this matches the project's convention."""
     agent = agent_for(module)
     failures, critical_failures = [], []
     for case in module.TEST_CASES:
         agent.reset()
         response = agent.complete(case["query"])
         got = response.get("function_calls") or []
+        if count_withheld and not got:
+            got = response.get("suppressed_calls") or []
         validation = response.get("validation") or {}
         if got and (validation.get("ungrounded") or validation.get("negation")):
             got = []
-        if got and response.get("confidence", 0.0) < min_confidence:
+        # `needle build --lora` drops the confidence head, so a locally tuned
+        # archive reports confidence None; `.get(key, 0.0)` does not substitute
+        # for a key that exists with value None, and None < 0.0 raises.
+        if got and (response.get("confidence") or 0.0) < min_confidence:
             got = []
         want = case["calls"]
         ok = sorted(_key(c) for c in got) == sorted(_key(c) for c in want)
