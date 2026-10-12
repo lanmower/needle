@@ -152,6 +152,8 @@ def main() -> int:
     parser.add_argument("--neutral", default="data/rows_neutral.jsonl")
     parser.add_argument("--neutral-extra", default="data/rows_neutral_extra.jsonl")
     parser.add_argument("--refusal", default="data/rows_refusal.jsonl")
+    parser.add_argument("--refusal-extra", default=None,
+                        help="more refusal rows, appended to --refusal")
     parser.add_argument("--out", default="data/pref_train.jsonl")
     parser.add_argument("--heldout", default="data/pref_heldout.jsonl")
     # 15% rather than 10%: the check that matters is per-class recall, and at
@@ -174,7 +176,8 @@ def main() -> int:
     sources = {
         "labeled": load(Path(args.labeled)),
         "neutral": load(Path(args.neutral)) + load(Path(args.neutral_extra)),
-        "refusal": load(Path(args.refusal)),
+        "refusal": load(Path(args.refusal)) + (
+            load(Path(args.refusal_extra)) if args.refusal_extra else []),
     }
 
     # Row authors should not have to embed the schema at all: an author who

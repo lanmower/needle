@@ -570,6 +570,29 @@ class NeedleTorch(nn.Module):
 # data / loss / schedule
 # --------------------------------------------------------------------------
 
+def class_weights(args):
+    """Per-row loss weight that flattens the class prior.
+
+    The rare classes cannot be fixed with more rows: `ship_workaround` rests on
+    14 real decisions and `stop_and_reassess` on 10, and augmentation past ~4x
+    was measured to buy rows and no signal. Inverse frequency is the lever left.
+    """
+    from collections import Counter
+
+    rows = [json.loads(line) for line in open(args.data, encoding="utf-8")
+            if line.strip()]
+    if args.rows:
+        rows = rows[:args.rows]
+    keys = []
+    for row in rows:
+        answers = row.get("answers") or []
+        keys.append((answers[0].get("arguments") or {}).get("resolution")
+                    if answers else "<refusal>")
+    counts = Counter(keys)
+    raw = torch.tensor([1.0 / counts[key] for key in keys], dtype=torch.float32)
+    return raw / raw.mean()
+
+
 def load_data(path, tokenizer, max_len, limit=None):
     seqs, masks = load_jsonl(path, tokenizer, max_len)
     if limit:
@@ -578,11 +601,14 @@ def load_data(path, tokenizer, max_len, limit=None):
             torch.as_tensor(np.ascontiguousarray(masks)).float())
 
 
-def masked_ce(logits, ids, mask):
+def masked_ce(logits, ids, mask, row_w=None):
     logits, targets, m = logits[:, :-1], ids[:, 1:], mask[:, 1:]
     ce = F.cross_entropy(logits.reshape(-1, logits.shape[-1]).float(),
                          targets.reshape(-1), reduction="none").reshape(m.shape)
-    return (ce * m).sum() / torch.clamp(m.sum(), min=1.0)
+    if row_w is None:
+        return (ce * m).sum() / torch.clamp(m.sum(), min=1.0)
+    w = row_w.to(ce.device).reshape(-1, 1)
+    return (ce * m * w).sum() / torch.clamp((m * w).sum(), min=1.0)
 
 
 def lr_at(step, total, warmup, peak):
@@ -637,6 +663,10 @@ def main():
     ap.add_argument("--max-len", type=int, default=512)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--rows", type=int, default=0, help="limit rows (0 = all)")
+    ap.add_argument("--data", default=DATA)
+    ap.add_argument("--class-weight", default="none",
+                    choices=["none", "inverse"], dest="class_weight",
+                    help="weight each row by inverse class frequency")
     ap.add_argument("--seq-len", type=int, default=0, help="truncate sequences")
     ap.add_argument("--out", default="checkpoints/pref_lora_gpu.safetensors")
     ap.add_argument("--log", default="data/ft_gpu.log")
@@ -663,8 +693,8 @@ def main():
                                             dtype="float64" if args.fp64 else "float32")
     model.grad_ckpt = not args.no_ckpt
     tokenizer = get_tokenizer(cfg.vocab_size)
-    max_len = fit_max_len(DATA, tokenizer, args.max_len)
-    seqs, masks = load_data(DATA, tokenizer, max_len, args.rows or None)
+    max_len = fit_max_len(args.data, tokenizer, args.max_len)
+    seqs, masks = load_data(args.data, tokenizer, max_len, args.rows or None)
     if args.seq_len:
         seqs, masks = seqs[:, :args.seq_len], masks[:, :args.seq_len]
     print(f"  {'setup':<9} {time.time()-t0:.1f}s  {len(paths)} lora groups  "
@@ -863,6 +893,12 @@ def train(model, seqs, masks, args, paths):
          f"{total} steps  warmup {warmup}  wd {wd}")
     emit(f"  {'numerics':<9} CQ W{WEIGHT_BITS} STE + A{Q.ACT_BITS}  grad-ckpt {model.grad_ckpt}")
 
+    row_w = class_weights(args) if getattr(args, "class_weight", "none") != "none" else None
+    if row_w is not None:
+        row_w = row_w.to(seqs.device)
+        emit(f"  {'weights':<9} {args.class_weight}  "
+             f"min {float(row_w.min()):.2f}  max {float(row_w.max()):.2f}")
+
     rng = np.random.default_rng(args.seed)
     every = max(1, total // 50)
     step = 0
@@ -878,7 +914,8 @@ def train(model, seqs, masks, args, paths):
             for g in opt.param_groups:
                 g["lr"] = lr_at(step, total, warmup, args.lr)
             opt.zero_grad(set_to_none=True)
-            loss = masked_ce(model(ids), ids, m)
+            loss = masked_ce(model(ids), ids, m,
+                             None if row_w is None else row_w[sel])
             loss.backward()
             torch.nn.utils.clip_grad_norm_(list(model.A) + list(model.B), 1.0)
             opt.step()
